@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>websocketclient</title>
+</head>
+<body>
+    <h1>websocketclient</h1>
+    <button id="connect">connect to websocket</button>
+    <p id="status"></p>
+    <script>
+        // onmessage , onopen , onclose are event handler propreties
+        document.getElementById('connect').addEventListener('click',()=>{
+            const ws=new websocket('ws://localhost:5000');
+            // connection is successfully opened
+            ws.onopen=() =>{
+                document.getElementById('status').textContent='connected to websocket server';
+                ws.send("hello from the client")
+            }
+            // message recieved from the server (for exemple the state of the chess game)
+            ws.onmessage = (event) =>{
+                console.log(`Message  received from the server is ${event.data}`);
+            };
+            // connection is closed
+            ws.onclose = ()=>{
+                console.log("connection is closed");
+            }
+        });
+    </script>
+</body>
+</html>
