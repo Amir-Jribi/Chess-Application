@@ -1,69 +1,104 @@
-const WebSocket=require('ws');
-// const { v4: uuidv4 } = require('uuid');
-const wss=new WebSocket.Server({port : 5000});
-let waitingPlayer = null;
-const match= new Map();
-// const color = new Map();
-// const c=0;
+const express=require('express');
+const bodyParser=require('body-parser');
+const path=require('path');
+const authRoutes=require('./routes/authRoutes');
+const gameRoutes=require('./routes/gameRoutes');
+const cors=require('cors');
+const session=require('express-session');
 
-// table 1: game
-// id of the game ,
-// move history
-// id of the player who is black
-// id of the player who is white (so that the board be at the side)
+const app=express();
+const port=3000;
 
-// table 2: player
-// id of the player
-c=0;
-allow=[];
+// Middleware
+app.use((req,res,next)=>{
+    console.log(`${req.method} - ${req.url}`);
+    next();
+})
+// parse application/json
+app.use(bodyParser.json());
+// parse application/x-www-form-urlencoded
+app.use(bodyParser.urlencoded({extended:true}));
+
+// app.use(express.static(path.join(__dirname,'../client')));
+// app.use(cors());
+// app.use(session({
+//     secret:'secret-key',//sign the session id cookie
+//     cookie:{maxAge:60000},
+//     saveUninitialized:false
+// }))
 
 
+const Users=['username','username1','username2','username3'];
+const Passwords=['password','password1','password2','password3'];
+const Games=[0,1,2,3,4,5,6];
+const moves=[];
 
-// json.parse : json string to javascript object
-// json.stringfy : javascript object to json string 
-wss.on('connection',(ws)=>{
-    ws.on('message',(message)=>{
-        const data=JSON.parse(message);
-        console.log(data.type);
-        if (data.type=='find-game'){
-            if (waitingPlayer!=null){
-                allow[c]='true';
-                match.set(ws,waitingPlayer);
-                match.set(waitingPlayer,ws);
-                // color.set(ws,'w');
-                // color.set(waitingPlayer,'b');
-                ws.send(JSON.stringify({type:'start-game',color:'white',allow:'true'}));
-                waitingPlayer.send(JSON.stringify({type:'start-game',color:'black',allow:'false'}));
-                waitingPlayer=null;
-                c++;
-            }
-            else {
-                waitingPlayer=ws;
-                ws.send(JSON.stringify({type:'waiting'}));
-            }
-              
+app.use('/api/auth',authRoutes);
+app.use('/api/games',gameRoutes);
+
+// app.post('/api/auth/login',(req,res)=>{
+//     const {username,password} = req.body;
+//     console.log(`${username} , ${password}`);
+//     res.json({success:"success"});
+// })
+
+app.post('/api/login', (req, res) => {
+    const {username,password} = req.body;
+    // console.log(req.sessionID);
+    // fetching via database to check if the user exists in the database
+    for(let i=0;i<Users.length;i++){
+        if (Users[i]===username && Passwords[i]===password){
+            console.log(`The username is ${username} and the password is ${password}`);
+            res.json({success:"success"});
+            return;
         }
-        else if (data.type=='move'){
-            // console.log(data.move);
-            ws.send(JSON.stringify({type:'move',allow:'false'}));
-            broadcast(JSON.stringify({type:'move',move:data.move,allow:'true'}),ws);
-        }
-    });
-
-    function broadcast (message,sender){
-        wss.clients.forEach((client)=>{
-            if (client.readyState ===WebSocket.OPEN && client!==sender && match.get(sender)===client){
-                client.send(message);
-            }
-        });
     }
-    ws.on('error',(error)=>{
-        console.log(error);
-    });
+    res.json({fail:"Error in the information that you have provided!"})
+})
 
-    ws.on('close',()=>{
-        console.log('client disconnected');
-    });
-});
+app.get('/api/games/:idx',(req,res)=>{
+    const gameId=req.params.idx;
 
-console.log('web socket server is running on ws://localhost:5000');
+    // fetching from the database the game with specific idx 
+    for(let i=0;i<Games.length;i++){
+        if (Games[i]==gameId){
+            res.json({success:"success"});
+            return;
+        }
+    }
+    // console.log(req.params); { idx: '1' } 
+    // console.log(gameId);  1
+    res.json({fail:"Couldnt find this game !"})
+
+})
+
+app.post('/api/games',(req,res)=>{
+    const {gameId,playerId,movesHistory} = req.body;
+    // searching for the table game , if that playerId matches with the gameId 
+})
+
+app.listen(port,()=>{
+    console.log(`Server is running on port ${port}`);
+})
+
+
+
+// origin : http://localhost:3000"
+
+// origin is definded by:
+// protocol : http , https
+// domain : localhost , example.com , google.com , supcom.tn
+// port : 3000 ; 5000
+// cors error happen , when a ressource wants to fetch another ressouce that differs in 
+// their origin 
+
+// tomorrow:
+// complete the server(database + structure)
+// test it
+// adding the fetch functionnality in the frontend
+
+// after tomorrow
+// fixing some bugs in the websocketserver
+
+// sessions live on the server
+// cookies lives on the client side 

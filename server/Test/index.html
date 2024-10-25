@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chess forever</title>
+    <!-- <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script> -->
+    <!-- <link rel="stylesheet" href="../chess/css/chessboard-1.0.0.min.css"> -->
+    <!-- <script src="../chess/js/chessboard-1.0.0.min.js"></script> -->
+    <!-- <script src="https://cdn.jsdelivr.net/npm/chess.js@0.12.0/chess.min.js"></script> -->
+
+</head>
+<body>
+    <h1>Chess application</h1>
+    <button id="find-game">Casual game</button>
+    <p id="status"></p>
+    <p id="history"></p>
+    <ul id="gameList">
+        
+    </ul>
+    <button id="display">Games Played</button>
+    <button id="next" >next move</button>
+    <button id="previous">previous move</button> 
+    <button id="send">Send to the WebSocket server</button>
+    <script>
+        
+        // onmessage , onopen , onclose are event handler propreties
+            const ws=new WebSocket('ws://localhost:3000');
+
+            // COLOR WHITE & turn true || color black & turn false
+            // connection is successfully opened
+            ws.onopen=() =>{
+                // ws.send("hello from the client")
+            }
+            // message recieved from the server (for exemple the state of the chess game)
+            ws.onmessage = (event) =>{
+                // const data=JSON.parse(event.data);
+                console.log(event);
+            };
+
+            document.getElementById("send").addEventListener("click",function(){
+                console.log('iam sending to the server')
+                ws.send(JSON.stringify({hello:'world'}));
+            })
+         
+            
+            
+            // connection is closed
+            ws.onclose = ()=>{
+                console.log("connection is closed");
+            }
+    </script>
+</body>
+</html>

@@ -15,10 +15,10 @@
     <button id="find-game">Casual game</button>
     <p id="status"></p>
     <p id="history"></p>
+    <div id="board" style="width: 400px"></div>
     <ul id="gameList">
         
     </ul>
-    <div id="board" style="width: 400px"></div>
     <button id="display">Games Played</button>
     <button id="next" >next move</button>
     <button id="previous">previous move</button> 
@@ -27,14 +27,16 @@
         // onmessage , onopen , onclose are event handler propreties
             const ws=new WebSocket('ws://localhost:5000');
             let game= new Chess();
-            console.log(game.fen());
+            // console.log(game.fen());
             let board = null; 
             let color="white";
             allow='true';
             let moveHistory=[];
             let sequenceOfMoves="";
-            let gameOver=false;
+            let gameOver=true;
             let gamesPlayed=[];
+            let c=0;
+            let curGame=0;
             // COLOR WHITE & turn true || color black & turn false
             // connection is successfully opened
             ws.onopen=() =>{
@@ -46,15 +48,29 @@
                 if (data.type ==='start-game'){
                     color = data.color;
                     allow = data.allow;
+                    curGame=data.gameID;
+                    //  console.log(typeof data.gameID);
+                    // console.log(`current game that is being played with id ${curGame}`);
                     document.getElementById('status').textContent = `game started you are playing as ${data.color}.`;
-                    var config = {
-                        draggable : true,
-                        position : 'start',
-                        orientation : color,
-                        onDrop : handleMove,
-                        // showNotation: true, 
+                    document.getElementById('history').textContent = "";
+                    gameOver=false;
+                    if (c===0){
+                            var config = {
+                            draggable : true,
+                            position : 'start',
+                            orientation : color,
+                            onDrop : handleMove,
+                            // showNotation: true, 
+                        }
+                        board = Chessboard('board',config);
+                        c++;
                     }
-                    board = Chessboard('board',config)
+                    else {
+                        game.reset();
+                        board.position(game.fen());
+                        board.orientation((color=='white') ? 'white' : 'black');
+                    }
+                    
                 }
                 else if (data.type === 'move'){
                     // board.position(game.fen());
@@ -68,25 +84,25 @@
                         if (game.in_checkmate()){
                             alert("checkmate ! work hard next time");
                             document.getElementById("history").textContent='';
-                            gamesPlayed.push(moveHistory);
-                            const gameList=document.getElementById('gameList');
-                            const listItem=document.createElement('li');
-                            listItem.textContent=`game number ${gamesPlayed.length}`
-                            listItem.setAttribute('data-game-id',0);
-                            listItem.addEventListener('click',()=>loadGameDetails());
-                            gameList.appendChild(listItem);
+                            // gamesPlayed.push(moveHistory);
+                            // const gameList=document.getElementById('gameList');
+                            // const listItem=document.createElement('li');
+                            // listItem.textContent=`game number ${gamesPlayed.length}`
+                            // listItem.setAttribute('data-game-id',0);
+                            // listItem.addEventListener('click',()=>loadGameDetails());
+                            // gameList.appendChild(listItem);
                             moveHistory=[];
                             gameOver=true;
                         }
                         else if (game.in_draw()){
-                            gamesPlayed.push(moveHistory);
+                            // gamesPlayed.push(moveHistory);
                             document.getElementById("history").textContent='';
                             moveHistory=[];
                             alert("It's a draw");
                             gameOver=true;
                         }
                         else if (game.in_stalemate()){
-                            gamesPlayed.push(moveHistory);
+                            // gamesPlayed.push(moveHistory);
                             document.getElementById("history").textContent='';
                             moveHistory=[];
                             alert("It's stalemate");
@@ -102,27 +118,45 @@
                 else if (data.type==='waiting'){
                     document.getElementById('status').innerText='Searching for an opponent!'
                 }
+                else if (data.type==='idGames'){
+                    for (let i=0;i<data.value.length;i++){
+                        const id=data.value[i];
+                        const gameList=document.getElementById('gameList');
+                        const listItem=document.createElement('li');
+                        listItem.textContent=`game number ${id}`;
+                        listItem.setAttribute('data-game-id',id);
+                        gameList.appendChild(listItem);
+                    }
+                }
+                else if (data.type==='movesHistory'){
+                    loadGameDetails(data.value);
+                }
                 // console.log(event);
             };
-            function loadGameDetails(){
-                const moves=gamesPlayed[0];
+            function loadGameDetails(moves){
+                // const moves=gamesPlayed[0];
+                console.log(moves);
                 game.reset();
                 board.position('start');
                 curidx=0;
                 document.getElementById("next").addEventListener("click",function(){
                     if (curidx<moves.length){
                         const gameMove=game.move(moves[curidx]);
-                        board.position(game.fen());
                         curidx++;
                     }
+                    board.position(game.fen());
                 });
-                // document.getElementById("previous").addEventListener("click",function(){
-                //     if (curidx>0){
-                //         const gameMove=game.move(moves[curidx]);
-                //         board.position(game.fen());
-                //         curidx--;
-                //     }
-                // });
+                document.getElementById("previous").addEventListener("click",function(){
+                    if (curidx>0){
+                        curidx--;
+                        game.reset();
+                        for(let i=0;i<curidx;i++){
+                            const gameMove=game.move(moves[i]);
+                            // board.position(game.fen()) : this updates the board each time the move has made;
+                        }
+                        board.position(game.fen()); // this just updates the board after making all the moves.
+                    }
+                });
 
                 // moves.forEach(move=>{
                 //     const gameMove=game.move(move);
@@ -136,13 +170,19 @@
                 console.log(`from the player${move}`);
                 // return 'snapback';
                 if (move != null && allow==='true' && gameOver===false){
+
                         document.getElementById("history").textContent+=` ${move.san} `;
                         moveHistory.push(move.san);
                         ws.send(JSON.stringify({
                         type:'move',
                         move:move,
+                        gameID:curGame
                         
                     }));
+                    if (game.game_over()==true){
+                        document.getElementById("history").textContent='';
+                        alert("Nice work , You win !");
+                    }
                 }
                 else {
                     return 'snapback';
@@ -173,9 +213,23 @@
             // }
            
             // send this message to the server upon clicking on the button to search for a game
+            // listItem.addEventListener('click',function(){
+            //     let gameId=listItem.getAttribute('data-game-id');
+            //     ws.send(JSON.stringify({type:'game',value:gameId}));
+            // })
+            document.getElementById('gameList').addEventListener('click',function(event){
+                if (event.target && event.target.nodeName==='LI'){
+                    let gameId=event.target.getAttribute('data-game-id');
+                     ws.send(JSON.stringify({type:'game',value:gameId}));
+                }
+            })
             document.getElementById('find-game').addEventListener('click',()=>{
                 // document.getElementById('status').textContent='waiting for an opponent ...';
                 ws.send(JSON.stringify({type:'find-game'}));
+            })
+
+            document.getElementById("display").addEventListener('click',()=>{
+                ws.send(JSON.stringify({type:'games'}));
             })
             // connection is closed
             ws.onclose = ()=>{
