@@ -20,7 +20,7 @@ const Player = {
                 // console.error('Error fetching users:', err.message);
             } else {
                 // console.log('Users:', rows);
-                callback(null,rows);
+                callback(null,rows[0]);
             }
         });
     }

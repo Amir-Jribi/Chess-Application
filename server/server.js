@@ -1,85 +1,145 @@
-const express=require('express');
-const bodyParser=require('body-parser');
+const express = require('express');
+const session = require('express-session')
+const SQLiteStore = require('connect-sqlite3')(session);
+const cookieParser = require('cookie-parser');
 const path=require('path');
+const WebSocket = require('ws');
+const http = require('http');
 const authRoutes=require('./routes/authRoutes');
 const gameRoutes=require('./routes/gameRoutes');
-const cors=require('cors');
-const session=require('express-session');
-
+let waitingPlayerWs=null;
+let waitingPlayerId = null;
+let matchWs = new Map();
+let matchId = new Map();
 const app=express();
-const port=3000;
+// app.use((req,res,next)=>{
+//     console.log(`${req.method} - ${req.url}`);
+//     next();
+// })
+app.use(express.urlencoded({extended:true}));
+app.use(express.json()); // tell express that data is coming from json format!!!
+app.use('/',express.static(__dirname+'/public'));
 
-// Middleware
-app.use((req,res,next)=>{
-    console.log(`${req.method} - ${req.url}`);
-    next();
+const sessionMiddleware = session({
+    secret : 'secret-key',
+    resave:false,
+    saveUninitialized:false,
+    cookie : {secure:false}
 })
-// parse application/json
-app.use(bodyParser.json());
-// parse application/x-www-form-urlencoded
-app.use(bodyParser.urlencoded({extended:true}));
+app.use(sessionMiddleware);
 
-// app.use(express.static(path.join(__dirname,'../client')));
-// app.use(cors());
-// app.use(session({
-//     secret:'secret-key',//sign the session id cookie
-//     cookie:{maxAge:60000},
-//     saveUninitialized:false
-// }))
+const wrap = (middleware)=>(ws,req,next)=>{
+    middleware(req,{},next);
+};
+app.get('/login',(req,res)=>{
+    // search for the database about the userId
+    // and assign it to the req.session object
+    res.sendFile(path.join(__dirname,'/login.html'));
+    // res.send('hello world');
+})
+app.get('/',(req,res)=>{
+    console.log(req.session.playerId);
+    if (!req.session.playerId){
+        return res.sendFile(path.join(__dirname,'/login.html'));
+    }
+    return res.sendFile(path.join(__dirname,'/index.html'));
+})
 
 
-const Users=['username','username1','username2','username3'];
-const Passwords=['password','password1','password2','password3'];
-const Games=[0,1,2,3,4,5,6];
-const moves=[];
+app.use('/api/auth/',authRoutes);
+app.use('/api/games/',gameRoutes);
 
-app.use('/api/auth',authRoutes);
-app.use('/api/games',gameRoutes);
+const server = http.createServer(app);
 
-// app.post('/api/auth/login',(req,res)=>{
-//     const {username,password} = req.body;
-//     console.log(`${username} , ${password}`);
-//     res.json({success:"success"});
+const wss = new WebSocket.Server({noServer:true});
+
+server.on('upgrade',(request,socket,head)=>{
+    sessionMiddleware(request,{},()=>{
+        if (request.session.playerId){
+            console.log(request.session.playerId);
+            wss.handleUpgrade(request,socket,head,(ws)=>{
+                wss.emit('connection',ws,request);
+            })
+        }
+        else {
+            socket.destroy();
+        }
+    });
+});
+
+wss.on('connection',(ws,req)=>{
+    const playerId = req.session.playerId;
+    console.log(`Connected websocket for user:${playerId}`);
+    ws.on('message',(message)=>{
+        const data=JSON.parse(message);
+        let sequence=[];
+        // console.log(data.type);
+        if (data.type=='find-game'){
+            if (waitingPlayerWs!=null && waitingPlayerWs!==ws){
+                matchWs.set(ws,waitingPlayerWs);
+                matchWs.set(waitingPlayerWs,ws);
+                matchId.set(playerId,waitingPlayerId);
+                matchId.set(waitingPlayerId,playerId);
+                ws.send(JSON.stringify({type:'start-game',color:'white',allow:'true'}));
+                waitingPlayerWs.send(JSON.stringify({type:'start-game',color:'black',allow:'false'}));
+                waitingPlayerWs=null;
+                waitingPlayerId=null;
+            }
+            else {
+                waitingPlayerWs=ws;
+                waitingPlayerId=playerId;
+                ws.send(JSON.stringify({type:'waiting'}));
+            }
+              
+        }
+        else if (data.type=='move'){
+            sequence.push(data.move);
+            // console.log(playerId);
+            ws.send(JSON.stringify({type:'move',allow:'false'}));
+            broadcast(JSON.stringify({type:'move',move:data.move,allow:'true'}),ws);
+        }
+        else if (data.type=='end'){
+            // save in the database new game ,with playerIds
+            console.log(`The game is finished between ${playerId} and ${matchId.get(playerId)}`);
+            console.log(data.moveHistory);
+            // post req to send the moves !
+            fetch('http://localhost:3000/api/games',{
+                method:'POST',
+                headers : {'Content-Type':'application/json'},
+                body : JSON.stringify({"playerId":playerId, "movesHistory":data.moveHistory})
+            })
+            .then(response => response.json())
+            .then(data=>console.log(data.message))
+            .catch(error=>console.error('Error saving game:',error));
+
+            fetch('http://localhost:3000/api/games',{
+                method:'POST',
+                headers : {'Content-Type':'application/json'},
+                body : JSON.stringify({"playerId":matchId.get(playerId), "movesHistory":data.moveHistory})
+            })
+            .then(response => response.json())
+            .catch(error=>console.error('Error saving game:',error));
+        }
+        function broadcast (message,sender){
+            wss.clients.forEach((client)=>{
+                if (client.readyState ===WebSocket.OPEN && client!==sender && matchWs.get(sender)===client){
+                    client.send(message);
+                }
+            });
+        }
+    })
+})
+
+
+
+// app.get('/check',(req,res)=>{
+//     return res.json({palyerId:req.session.palyerId});
 // })
 
-app.post('/api/login', (req, res) => {
-    const {username,password} = req.body;
-    // console.log(req.sessionID);
-    // fetching via database to check if the user exists in the database
-    for(let i=0;i<Users.length;i++){
-        if (Users[i]===username && Passwords[i]===password){
-            console.log(`The username is ${username} and the password is ${password}`);
-            res.json({success:"success"});
-            return;
-        }
-    }
-    res.json({fail:"Error in the information that you have provided!"})
-})
+server.listen(3000,()=>{
+    console.log('server is listening on port 3000');
+});
 
-app.get('/api/games/:idx',(req,res)=>{
-    const gameId=req.params.idx;
-
-    // fetching from the database the game with specific idx 
-    for(let i=0;i<Games.length;i++){
-        if (Games[i]==gameId){
-            res.json({success:"success"});
-            return;
-        }
-    }
-    // console.log(req.params); { idx: '1' } 
-    // console.log(gameId);  1
-    res.json({fail:"Couldnt find this game !"})
-
-})
-
-app.post('/api/games',(req,res)=>{
-    const {gameId,playerId,movesHistory} = req.body;
-    // searching for the table game , if that playerId matches with the gameId 
-})
-
-app.listen(port,()=>{
-    console.log(`Server is running on port ${port}`);
-})
 
 
 

@@ -1,8 +1,9 @@
 const Player = require('../models/Player');
+const path=require('path');
 
 exports.login = (req,res)=>{
     const {username,password} = req.body;
-    console.log(`${username} , ${password}`);
+    console.log(`${username} , ${password} , ${req.session.playerId}`);
     // res.json({success:"success"});
     // console.log("serve the request");
     Player.findByUsernameAndPassword(username,password,(err,player)=>{
@@ -10,15 +11,19 @@ exports.login = (req,res)=>{
             return res.status(500).json({error:'Internal server error'});
         }
         if (player){
-            req.session.palyerId=player.id;
+            req.session.playerId=player.id;
+            console.log(player.id);
+            console.log(req.session.playerId);
             // req.session.username = palyer.username;
-            return res.json({success:'ok',playerId:req.session.playerId});
+            return res.redirect('/');
+            // return res.json({success:'ok',playerId:req.session.playerId});
             // return res.json({success:'ok',username:username,password:password});
         }
         else {
-            Player.createUser(username,password,(err,userId)=>{
+            Player.createUser(username,password,(err,playerId)=>{
                 if (err) return res.status(500).json({error:'Error creating user'})
-                return res.json({success:'success',userId:userId});
+                req.session.playerId=playerId;
+                return res.json({success:'success',playerId:playerId});
             });
         }
         // else {

@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chess forever</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <link rel="stylesheet" href="/css/chessboard-1.0.0.min.css">
+    <script src="/js/chessboard-1.0.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chess.js@0.12.0/chess.min.js"></script>
+
+</head>
+<body>
+    <h1>Chess application</h1>
+    <button id="find-game">Casual game</button>
+    <p id="status"></p>
+    <p id="history"></p>
+    <div id="board" style="width: 400px"></div>
+    
+    <button id="display">Games Played</button>
+    <br>
+    <div id="games-container">
+    </div>
+    <button id="previous">previous move</button>
+    <button id="next" >next move</button>
+    
+    <p id="test"></p> 
+    <script>
+            
+        // onmessage , onopen , onclose are event handler propreties
+            const ws=new WebSocket('ws://localhost:3000');
+            let game= new Chess();
+            // console.log(game.fen());
+            let board = null; 
+            let color="white";
+            allow='true';
+            let moveHistory=[];
+            let sequenceOfMoves="";
+            let gameOver=true;
+            let c=0;
+            var config = {
+                            draggable : true,
+                            position : 'start',
+                            orientation : color,
+                            onDrop : handleMove,
+                            // showNotation: true, 
+                        }
+            board = Chessboard('board',config);
+            ws.onopen=() =>{
+                // ws.send("hello from the client")
+            }
+            // message recieved from the server (for exemple the state of the chess game)
+            ws.onmessage = (event) =>{
+                const data=JSON.parse(event.data);
+                if (data.type ==='start-game'){
+                    color = data.color;
+                    allow = data.allow;
+                    document.getElementById('status').textContent = `game started you are playing as ${data.color}.`;
+                    document.getElementById('history').textContent = "";
+                    gameOver=false;
+                    // if (c===0){
+                      
+                        // c++;
+                    // }
+                    // else {
+                        game.reset();
+                        board.position(game.fen());
+                        board.orientation((color=='white') ? 'white' : 'black');
+                    // }
+                    
+                }
+                else if (data.type === 'move'){
+                    // board.position(game.fen());
+                    // console.log(data);
+                    // This data.type is send from the opponent
+                    allow=data.allow;
+                    if (allow !=='false'){
+                        game.move(data.move);
+                        moveHistory.push(data.move.san);
+                        document.getElementById("history").textContent+=` ${data.move.san} `
+                        board.position(game.fen());
+                        if (game.game_over()){
+                            document.getElementById('status').textContent = "game over!";
+                            document.getElementById('history').textContent = "";
+                            ws.send(JSON.stringify({type:'end',moveHistory:moveHistory,}));
+                            moveHistory=[];
+                        }
+                    }
+                }
+                else if (data.type==='waiting'){
+                    document.getElementById('status').innerText='Searching for an opponent!'
+                }
+            };
+            
+            function handleMove(source,target){
+                console.log(`from source : ${source} to target : ${target}`);
+                const move = game.move({from:source,to:target});
+                console.log(`from the player${move}`);
+
+                if (move != null && allow==='true' && gameOver===false){
+                    document.getElementById("history").textContent+=` ${move.san} `;
+                    moveHistory.push(move.san);
+                    ws.send(JSON.stringify({type:'move',move:move,}));
+                    if (game.game_over()==true){
+                        document.getElementById('status').textContent = "game over!";
+                        document.getElementById('history').textContent = "";
+                        moveHistory =[];
+                        // alert("Nice work , You win !");
+                    }
+                }
+                else {
+                    return 'snapback';
+                }
+                
+                /*
+                {
+                    type: 'move',
+                    move: {
+                        color: 'w',
+                        from: 'd2',
+                        to: 'd4',
+                        flags: 'b',
+                        piece: 'p',
+                        san: 'd4'
+                    }
+                    }
+                */
+                // board.position(game.fen());
+                console.log(game.fen());
+            }
+           document.getElementById('display').addEventListener('click',()=>{
+                // now display the games that the user have played , with his opponent
+                fetch('http://localhost:3000/api/games')
+                .then(response => response.json())
+                .then(data => {
+                    // console.log(data);
+                    if (data.games){
+                        // const games=data.games;
+                        // console.log(data.games);
+                        // console.log('success');
+                        const gamesContainer = document.getElementById('games-container');
+                        gamesContainer.innerHTML = '';
+                        data.games.forEach(gameData=>{
+                            const button = document.createElement('button');
+                            button.innerText = `Game ${gameData.gameId}`;
+                            button.onclick = ()=>{
+                                displayGameMoves(gameData.movesHistory);
+                            }
+                            gamesContainer.appendChild(button);
+                        })
+
+                    }
+                })
+                .catch(error => console.error('error fetching game history',error));
+           });
+
+           function displayGameMoves(movesHistory){
+                const moves = JSON.parse(movesHistory);
+                document.getElementById('test').innerText ='';
+                document.getElementById('test').innerText = moves;
+                game.reset();
+                board.position('start');
+                curidx=0;
+                document.getElementById("next").addEventListener("click",function(){
+                    if (curidx<moves.length){
+                        const gameMove=game.move(moves[curidx]);
+                        board.position(game.fen());
+                        curidx++;
+                    }
+                    
+                });
+                document.getElementById("previous").addEventListener("click",function(){
+                    if (curidx>0){
+                        game.undo();
+                        curidx--;
+                        board.position(game.fen());
+                    }
+                    
+                    // if (curidx>0){
+                    //     curidx--;
+                    //     game.reset();
+                    //     board.position('start');
+                    //     for(let i=0;i<curidx;i++){
+                    //         const gameMove=game.move(moves[i]);
+                    //         board.position(game.fen());
+                    //         // board.position(game.fen()) : this updates the board each time the move has made;
+                    //     }
+                    //     // board.position(game.fen()); // this just updates the board after making all the moves.
+                    // }
+                });
+           }
+         
+            document.getElementById('find-game').addEventListener('click',()=>{
+                // document.getElementById('status').textContent='waiting for an opponent ...';
+                ws.send(JSON.stringify({type:'find-game'}));
+            })
+            // connection is closed
+            ws.onclose = ()=>{
+                console.log("connection is closed");
+            }
+    </script>
+</body>
+</html>
+
+
+
+
+
+
+
+<!-- <!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chess forever</title>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <link rel="stylesheet" href="/css/chessboard-1.0.0.min.css">
+    <script src="/js/chessboard-1.0.0.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chess.js@0.12.0/chess.min.js"></script>
+
+</head>
+<body>
+    <h1>Chess application</h1>
+    <button id="find-game">Casual game</button>
+    <div id="board" style="width: 400px"></div>
+    <p id="status"></p>
+    <p id="history"></p>
+    <ul id="gameList">
+        
+    </ul>
+    <button id="display">Games Played</button>
+    <button id="next" >next move</button>
+    <button id="previous">previous move</button> 
+    <button id="send">Send to the WebSocket server</button>
+    <script>
+        
+        // onmessage , onopen , onclose are event handler propreties
+            const ws=new WebSocket('ws://localhost:3000');
+            let game= new Chess();
+            // COLOR WHITE & turn true || color black & turn false
+            // connection is successfully opened
+            ws.onopen=() =>{
+                // ws.send("hello from the client")
+            }
+            // message recieved from the server (for exemple the state of the chess game)
+            ws.onmessage = (event) =>{
+                // const data=JSON.parse(event.data);
+                console.log(event);
+                var config = {
+                            draggable : true,
+                            position : 'start',
+                            // orientation : color,
+                            // onDrop : handleMove,
+                            // showNotation: true, 
+                }
+                board = Chessboard('board',config);
+            };
+
+            document.getElementById("send").addEventListener("click",function(){
+                console.log('iam sending to the server')
+                ws.send(JSON.stringify({hello:'world'}));
+            })
+         
+            
+            
+            // connection is closed
+            ws.onclose = ()=>{
+                console.log("connection is closed");
+            }
+    </script>
+</body>
+</html> -->
